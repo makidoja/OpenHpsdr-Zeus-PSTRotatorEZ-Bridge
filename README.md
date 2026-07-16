@@ -1,675 +1,546 @@
-# ZeusPstBridge
+# DXLog KST Chat Bridge with AirScout
 
-**ZeusPstBridge** is a Windows bridge between the Hamlib `rotctld` network interface used by **OpenHPSDR Zeus** and the UDP control interface provided by **PstRotatorAz**.
+**Version 1.9 — DXLog.net custom form for ON4KST, AirScout and DXLog rotator control**
 
-A single copy of ZeusPstBridge can operate up to **10 independent rotator channels**. Each channel appears to Zeus as a separate `rotctld` TCP server and is linked to its own PstRotatorAz IP address and UDP port pair.
+This custom form combines the ON4KST chat service with DXLog.net. It displays the current KST station list and chat messages, inserts selected callsigns and locators into DXLog, sends directed messages and macros, calculates QRB/QTF, controls the DXLog rotator command, and uses AirScout to show aircraft-scatter opportunities automatically.
 
-```text
-OpenHPSDR Zeus                 ZeusPstBridge                    PstRotatorAz
+The bridge is supplied as source code and builds as an **x86 .NET Framework 4.8 class library**.
 
-Rotator 1 ── TCP 4533 ──► Channel 1 ── UDP/XML ──► 192.168.1.101:12000
-Rotator 2 ── TCP 4535 ──► Channel 2 ── UDP/XML ──► 192.168.1.102:12000
-Rotator 3 ── TCP 4537 ──► Channel 3 ── UDP/XML ──► 192.168.1.103:12100
-    ...                         ...
-Rotator 10 ─ TCP 4551 ──► Channel 10 ─ UDP/XML ──► another PST instance
-```
+---
 
-## Contents
+## Main features
 
-- [Features](#features)
-- [Requirements](#requirements)
-- [Building the program](#building-the-program)
-- [Running ZeusPstBridge](#running-zeuspstbridge)
-- [Channel settings](#channel-settings)
-- [Configuring PstRotatorAz](#configuring-pstrotatoraz)
-- [Configuring OpenHPSDR Zeus](#configuring-openhpsdr-zeus)
-- [Example installations](#example-installations)
-- [Testing without a physical rotator](#testing-without-a-physical-rotator)
-- [Supported commands](#supported-commands)
-- [Configuration and log files](#configuration-and-log-files)
-- [Firewall and network security](#firewall-and-network-security)
-- [Troubleshooting](#troubleshooting)
-- [Known limitations](#known-limitations)
+- ON4KST classic telnet connection and room selection.
+- Station list with callsign, name, locator, QTF, QRB and AirScout opportunity.
+- General CQ and directed KST messaging.
+- Four editable message macros using live DXLog frequency, band and mode.
+- Double-click a station to enter its callsign and locator into DXLog.
+- Automatic refresh of the KST station list every 10 seconds.
+- Immediate worked-status and station-list refresh after a QSO is logged.
+- Selected-station conversation panel.
+- OpenStreetMap station map with pan, zoom and station selection.
+- Optional DXLog rotator command when a station is selected on the map.
+- Automatic AirScout scan of every KST station with a valid locator.
+- Sortable **AS** column showing `NOW`, `Xm`, `-`, or blank.
+- Selected AirScout path and matched aircraft drawn on the KST map.
+- Window position, size, colours and macros saved between sessions.
 
-## Features
-
-- Up to 10 independent rotator channels in one application.
-- A separate Hamlib `rotctld` TCP endpoint for every enabled channel.
-- A separate PstRotatorAz hostname/IP address, UDP command port and UDP reply port for every channel.
-- Supports PstRotatorAz instances on the local PC or elsewhere on the LAN.
-- Supports several remote PstRotatorAz computers using the same UDP port pair, provided their IP addresses are different.
-- Polls actual azimuth using `<PST>AZ?</PST>`.
-- Polls target azimuth using `<PST>TGA?</PST>`.
-- Converts absolute azimuth, stop and park commands from Hamlib to PstRotatorAz UDP commands.
-- Live display of Zeus connection state, PstRotatorAz state, current azimuth, target azimuth and last reply time.
-- Manual Query, Go, Stop, Park and **STOP ALL** controls.
-- Multiple simultaneous TCP clients per channel.
-- Optional protocol traffic logging for diagnosis and development.
-- Automatically saves configuration in the current user's local application-data folder.
-- Includes a PstRotatorAz simulator and a simple `rotctld` test client.
+---
 
 ## Requirements
 
-### To build from source
+### For normal use
 
 - Windows 10 or Windows 11.
-- The **.NET 8 SDK**.
-- A Windows x64 or Windows ARM64 computer.
+- DXLog.net installed in its standard 32-bit program folder.
+- A valid ON4KST account and password.
+- Internet access for ON4KST and OpenStreetMap tiles.
 
-Download the .NET 8 SDK from:
+### For AirScout features
 
-```text
-https://dotnet.microsoft.com/download/dotnet/8.0
-```
+- AirScout running on the same PC.
+- A working aircraft feed configured in AirScout.
+- AirScout Network Server enabled on UDP port `9872` and HTTP port `9880`.
 
-Install the **SDK**, not only the Desktop Runtime. The build script creates a self-contained executable, so computers running the finished program do not need .NET installed separately.
+### For building the DLL
 
-### To use the bridge
-
-- OpenHPSDR Zeus with Hamlib/`rotctld` network rotator support.
-- One or more configured PstRotatorAz installations.
-- IP connectivity between ZeusPstBridge and each PstRotatorAz computer.
-- One unused TCP port per Zeus rotator channel.
-- One UDP command/reply port pair per PstRotatorAz instance when multiple instances share the same computer.
-
-## Building the program
-
-### Recommended x64 build
-
-1. Extract the source archive to a normal writable folder.
-2. Install the .NET 8 SDK.
-3. Open the extracted `ZeusPstBridge-v0.1` folder.
-4. Double-click:
+- Visual Studio 2022.
+- .NET Framework 4.8 Developer Pack.
+- DXLog.net installed so the project can reference:
 
 ```text
-Build-Windows.bat
+C:\Program Files (x86)\DXLog.net\DXLog.net.exe
+C:\Program Files (x86)\DXLog.net\DXLogDAL.dll
 ```
 
-Alternatively, open PowerShell in the project folder and run:
+---
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Build-Windows.ps1
-```
+# 1. Build the bridge
 
-The finished program will be created at:
+1. Extract the ZIP file to a normal writable folder.
+2. Open `DXLogKstBridge.csproj` in Visual Studio 2022.
+3. Select **Release** and **x86** in the Visual Studio toolbar.
+4. Check that both DXLog references load without warning:
+   - `DXLog.net`
+   - `DXLogDAL`
+5. Select **Build → Build Solution**.
+
+The DLL will be created at:
 
 ```text
-publish\win-x64\ZeusPstBridge.exe
+bin\x86\Release\DXLogKstBridge.dll
 ```
 
-The published application is a self-contained, single-file Windows executable.
-
-### Windows ARM64 build
-
-Run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Build-Windows.ps1 -Runtime win-arm64
-```
-
-The result will be placed in:
+For a diagnostic build, use **Debug | x86**. Its output is:
 
 ```text
-publish\win-arm64\ZeusPstBridge.exe
+bin\x86\Debug\DXLogKstBridge.dll
 ```
 
-### Build from the command line
+## Reference errors
 
-Developers can also build the solution directly:
+If Visual Studio cannot find the DXLog assemblies, remove and re-add the two references from the actual DXLog installation folder. The project must remain an **x86** build because DXLog.net is a 32-bit application.
 
-```powershell
-dotnet restore .\ZeusPstBridge.sln
-dotnet build .\ZeusPstBridge.sln --configuration Release
-```
+---
 
-To publish an x64 self-contained executable manually:
+# 2. Install the bridge in DXLog
 
-```powershell
-dotnet publish .\ZeusPstBridge\ZeusPstBridge.csproj `
-  --configuration Release `
-  --runtime win-x64 `
-  --self-contained true `
-  --output .\publish\win-x64 `
-  /p:PublishSingleFile=true `
-  /p:IncludeNativeLibrariesForSelfExtract=true
-```
-
-## Running ZeusPstBridge
-
-Run:
+1. Close DXLog.net completely.
+2. Create the following folder if it does not already exist:
 
 ```text
-ZeusPstBridge.exe
+%APPDATA%\DXLog.net\CustomForms
 ```
 
-On first launch, the program creates a default configuration containing 10 rows. Only **Rotator 1** is enabled initially.
+3. Copy `DXLogKstBridge.dll` into that folder.
+4. Start DXLog.net.
+5. Open the custom form from the DXLog **Custom** menu using **KST Chat Bridge**.
 
-The default first channel is:
+When updating an existing version, close DXLog before replacing the DLL. Keeping a copy of the previous working DLL is recommended.
+
+---
+
+# 3. Configure ON4KST
+
+Open the bridge and click **Setup**.
+
+Use these normal values:
 
 ```text
-Name:             Rotator 1
-Zeus listen IP:  127.0.0.1
-Zeus TCP port:   4533
-PST IP / host:   127.0.0.1
-PST command port: 12000
-PST reply port:   12001
-Poll interval:    500 ms
-Azimuth range:    0 to 360 degrees
+Host:       www.on4kst.info
+Port:       23000
+Room:       2              (144/432 MHz)
+User/call:  your callsign
+Password:   your ON4KST password
+Name:       your name
+QTH locator: your Maidenhead locator
 ```
 
-Configure the required rows, tick **On** for each channel that should run, and press **Start Bridge**.
+The QTH locator is important. It is used for:
 
-Starting the bridge automatically saves the settings shown in the grid. To change channel settings later, stop the bridge, edit the rows, then press **Save & Apply** or **Start Bridge**.
+- QRB and QTF calculations.
+- AirScout path calculations.
+- Home-station position on the KST map.
+- Home-centred map zoom.
+- Rotator bearing calculations.
 
-### Main controls
+Click **OK**, then click **Connect**.
 
-| Control | Function |
-|---|---|
-| **Start Bridge** | Saves the displayed configuration and starts all enabled channels. |
-| **Stop Bridge** | Stops the TCP listeners and UDP polling. It does not deliberately move the rotators. |
-| **Save & Apply** | Saves changes. If the bridge is running, enabled channels are restarted with the new settings. |
-| **STOP ALL** | Sends `<PST><STOP>1</STOP></PST>` to every enabled channel. |
-| **Query Selected** | Immediately requests the current and target azimuth for the selected row. |
-| **Set AZ / Go** | Sends the entered absolute azimuth to the selected channel. |
-| **Stop Selected** | Sends a stop command to the selected channel. |
-| **Park Selected** | Sends the PstRotatorAz park command to the selected channel. |
-| **Start bridge when program opens** | Automatically starts all enabled channels when the program launches. |
-| **Protocol traffic log** | Records Hamlib commands, Hamlib responses and PstRotatorAz UDP traffic. |
-| **Open Config Folder** | Opens the folder containing `config.json` and the Logs folder. |
+The room can also be changed later with the **Room** button. If connected, the bridge reconnects automatically using the new room.
 
-## Channel settings
+## KST room numbers
 
-Each row represents one completely independent rotator connection.
+```text
+1   50 MHz
+2   144/432 MHz
+3   1296 MHz
+4   2.3/3.4 GHz
+5   5.7/10 GHz
+6   24 GHz and up
+7   EME
+8   MS
+9   144/432 MHz IARU R3
+10  2000–630 m
+11  WARC 30/17/12 m
+12  28 MHz
+13  40 MHz
+```
 
-| Column | Meaning |
-|---|---|
-| **On** | Enables the channel when the bridge starts. |
-| **Name** | Friendly name shown in the bridge log, such as `2 m`, `70 cm` or `Dish`. |
-| **Zeus listen IP** | Local IPv4 address on which the bridge accepts Zeus/rotctld TCP connections. |
-| **TCP** | Unique TCP port used by Zeus for this rotator. |
-| **PST IP / host** | IP address or DNS hostname of the computer running the matching PstRotatorAz instance. |
-| **PST port** | PstRotatorAz UDP command port. |
-| **Reply** | Local UDP port on which PstRotatorAz replies are expected, normally command port + 1. |
-| **Poll ms** | Time between current-position requests. Valid range: 200 to 10,000 ms. |
-| **Min AZ** | Lowest azimuth the bridge will accept from Zeus or the manual Go control. |
-| **Max AZ** | Highest azimuth the bridge will accept. |
-| **Zeus** | Runtime status: Stopped, Listening, or the number of connected clients. |
-| **PST** | Online when a valid `AZ:` or `TGA:` UDP reply has been received recently. |
-| **Current** | Last azimuth received in an `AZ:xxx` reply. |
-| **Target** | Last target received in a `TGA:xxx` reply. |
-| **Last reply** | Local time of the most recent valid PstRotatorAz reply. |
+---
 
-### Choosing the Zeus listen IP
+# 4. Configure an aircraft feed in AirScout
+
+AirScout must show live aircraft on its own map before the bridge can produce useful AS results.
+
+## Tested OpenSky configuration
+
+In AirScout open:
+
+**Options → Planes**
+
+Choose:
+
+```text
+[WebFeed] OpenSky
+```
+
+Open **Settings** and set the URL to:
+
+```text
+https://opensky-network.org:443/api/states/all
+```
+
+A cycle of around `90` seconds is suitable for initial use.
+
+For anonymous testing, leave these fields blank:
+
+```text
+OAuthClientID
+OAuthSecret
+```
+
+The explicit `:443` is important with affected AirScout 1.4.x OpenSky plugins. Without it, the plugin may rewrite the working hostname to `api.opensky-network.org`, which can produce:
+
+```text
+Could not establish trust relationship for the SSL/TLS secure channel
+```
+
+After restarting AirScout, reopen the OpenSky settings and confirm that the URL still contains `:443`.
+
+## Other aircraft feeds
+
+The bridge does not depend directly on OpenSky. Any AirScout-compatible feed is suitable, including a local receiver, Virtual Radar Server, RTL1090 or another supported web feed. AirScout only needs to have current aircraft positions available internally.
+
+---
+
+# 5. Enable the AirScout Network Server
+
+In AirScout open:
+
+**Options → Network**
+
+Enable:
+
+```text
+Activate Network Server
+```
 
 Use:
 
 ```text
-127.0.0.1
+AirScout UDP Server Name: AS
+AirScout UDP Server Port: 9872
+AirScout HTTP Server Port: 9880
 ```
 
-when Zeus and ZeusPstBridge run on the same computer. This is the safest setting because other computers cannot connect to the TCP port.
+Allow AirScout through Windows Firewall when prompted. Private-network access is sufficient when AirScout and DXLog are on the same PC.
 
-Use the bridge computer's LAN address, for example:
+The two interfaces have different jobs:
+
+- **UDP 9872** — path queries and `ASNEAREST` opportunity replies.
+- **HTTP 9880** — live aircraft positions from `/planes.json` for the KST map overlay.
+
+---
+
+# 6. Enable AirScout in the KST bridge
+
+Open **Setup** in the KST Chat Bridge and enable:
 
 ```text
-192.168.1.50
+Enable AirScout UDP integration
+UDP:  9872
+HTTP: 9880
 ```
 
-when Zeus runs on another computer and should connect only through that interface.
+The bridge status at the bottom-right can show:
 
-Use:
+- **AirScout: Off** — disabled in bridge Setup.
+- **AirScout: Listening** — UDP listener is active, but no valid query/reply has completed yet.
+- **AirScout: Waiting CALL** — a query has been sent and the bridge is waiting for AirScout.
+- **AirScout: OK** — valid replies are being received.
+- **AirScout: OK n/total** — automatic station scan is in progress.
+- **AirScout: Error** — the UDP listener or AirScout setup failed.
+
+A valid own callsign, own locator, KST station locator and DXLog radio frequency are all required for a path query.
+
+---
+
+# 7. Understanding the station list
+
+The station list contains:
 
 ```text
-0.0.0.0
+Call | Name | Loc | QTF | QRB | AS
 ```
 
-only when the bridge must listen on all local IPv4 interfaces. Do not enter `0.0.0.0` as the destination address in Zeus; Zeus must connect to the bridge computer's real IP address.
+The **AS** values mean:
 
-### Port rules for multiple rotators
+- `NOW` — AirScout reports an immediate/current opportunity.
+- `5m` — the best reported opportunity is approximately five minutes away.
+- `-` — AirScout replied, but no suitable aircraft was reported within the display window.
+- blank — that station has not yet been queried, lacks a valid locator, or AirScout is unavailable.
 
-Every enabled channel must have a unique Zeus TCP endpoint.
+Click the **AS** column header to sort the list with `NOW` first, followed by the lowest minute values. This makes it easy to choose a station whose aircraft-scatter opportunity is approaching.
 
-Valid example:
+Hover over a station row to see additional AirScout information, including:
+
+- Aircraft identifier.
+- Aircraft category.
+- Minutes to opportunity.
+- AirScout potential.
+- Intersection QRB.
+
+## Automatic scanning
+
+The bridge automatically scans every current KST station that has a valid locator.
+
+- One path is queried at a time.
+- A path is skipped after a two-second timeout if no reply arrives.
+- After a complete scan, the bridge waits 20 seconds and starts again.
+- Changing the active DXLog band clears the old AS results and starts a new band-specific scan.
+- The KST station list itself refreshes every 10 seconds.
+
+With a large room, the first full pass takes longer because every valid station has to be queried.
+
+---
+
+# 8. Selecting stations and using DXLog
+
+### Single-click a station
+
+- Selects that callsign.
+- Displays messages to/from that station in the lower message panel.
+- Performs an immediate AirScout query for the selected path.
+- Updates the selected path shown on the KST map.
+
+### Double-click a station
+
+- Inserts the callsign into the current DXLog entry line.
+- Supplies the KST locator when DXLog does not already have a locator.
+
+DXLog database information takes priority over KST locator information where available.
+
+### Right-click a station
+
+The context menu provides:
+
+- Put the callsign into DXLog.
+- Message the station.
+- Copy the callsign.
+- Send a custom message.
+- **Show path in AirScout**.
+
+Use **Show path in AirScout** when you specifically want AirScout’s own window to display that path.
+
+---
+
+# 9. Messages, CQ and macros
+
+## CQ
+
+Click **CQ** to send a general room message. This clears the directed-station selection for messaging.
+
+## To call
+
+Click **To call** to compose a directed message to the selected callsign.
+
+## Macros
+
+Click **Edit macros** to configure M1–M4. The default macros are:
 
 ```text
-Rotator 1: 127.0.0.1 TCP 4533
-Rotator 2: 127.0.0.1 TCP 4535
-Rotator 3: 127.0.0.1 TCP 4537
+M1  PSE SKED {FREQ} {MODE}
+M2  QRV {FREQ} {MODE}?
+M3  I CALL YOU {FREQ} {MODE}
+M4  TU 73
 ```
 
-Two PstRotatorAz instances on the **same computer** must use different UDP reply ports and should normally use separate command/reply pairs:
+Supported replacements are:
 
 ```text
-PST instance 1: UDP 12000 commands, UDP 12001 replies
-PST instance 2: UDP 12010 commands, UDP 12011 replies
-PST instance 3: UDP 12020 commands, UDP 12021 replies
+{CALL}      selected station callsign
+{MYCALL}    your configured callsign
+{FREQ}      DXLog frequency in plain kHz, for example 144750
+{FREQMHZ}   frequency in MHz, for example 144.75MHz
+{BAND}      active DXLog band
+{MODE}      active DXLog mode
 ```
 
-PstRotatorAz instances on **different IP addresses** may use the same UDP pair because ZeusPstBridge also identifies replies by source IP address:
+Macros are directed to the currently selected station.
+
+---
+
+# 10. KST map and aircraft overlay
+
+Click **Map** in the bridge.
+
+The map displays:
+
+- Your configured home station.
+- Current KST users with valid locators.
+- The selected station.
+- The great-circle path from home to the selected station.
+- AirScout aircraft matched to the selected path.
+
+## Map controls
+
+- **Refresh** — immediately reload stations and current aircraft data.
+- **Zoom +** — zoom in, centred on the home station.
+- **Zoom -** — zoom out, centred on the home station.
+- **Mouse wheel** — zoom in/out, centred on the home station.
+- **Fit** — fit the home station and all listed stations into view.
+- **Drag map** — temporarily pan the map. The next zoom action recentres on home.
+- **Turn rotator on click** — selecting a map station also triggers DXLog’s rotator command.
+- **Show AirScout path and aircraft** — enables or hides the selected path/aircraft overlay.
+
+The map checks AirScout’s local `/planes.json` output every **5 seconds**. Actual aircraft movement is limited by the update interval of the aircraft feed configured in AirScout. For example, a 90-second OpenSky cycle will cause aircraft positions to update in larger steps even though the bridge checks every five seconds.
+
+OpenStreetMap tiles are cached at:
 
 ```text
-192.168.1.101: command 12000, reply 12001
-192.168.1.102: command 12000, reply 12001
-192.168.1.103: command 12000, reply 12001
+%APPDATA%\DXLog.net\KstMapTiles
 ```
 
-Do not configure two channels with the same PstRotatorAz host and the same reply port. The bridge will reject this because incoming replies would be ambiguous.
+---
 
-## Configuring PstRotatorAz
+# 11. Rotator control
 
-Repeat these steps for every PstRotatorAz instance:
+The bridge uses DXLog’s existing short-path rotator command, equivalent to **Ctrl+F12**.
 
-1. Open the UDP control settings in PstRotatorAz.
-2. Enable UDP control.
-3. Set the UDP command port, for example `12000`.
-4. Confirm that query replies are sent on command port + 1, for example `12001`.
-5. Ensure the selected PstRotatorAz instance is connected to and controlling the intended physical rotator.
-6. Enter the PstRotatorAz computer's IP address and matching ports in the appropriate ZeusPstBridge row.
-7. Start the bridge and press **Query Selected**.
-8. Confirm that **PST** changes to **Online** and that **Current** shows the antenna azimuth.
+Before using it:
 
-The menu wording varies slightly between PstRotatorAz releases, but the required function is its UDP control port/interface.
+1. Configure the rotator normally in DXLog.
+2. Confirm that Ctrl+F12 turns the antenna to the callsign in the current entry line.
+3. Open the KST map.
+4. Leave **Turn rotator on click** enabled.
+5. Click a station on the map.
 
-The bridge sends commands such as:
+The bridge first puts the callsign/locator into DXLog, then triggers the DXLog rotator command after a short delay.
 
-```xml
-<PST><AZIMUTH>85</AZIMUTH></PST>
-<PST><STOP>1</STOP></PST>
-<PST><PARK>1</PARK></PST>
-<PST>AZ?</PST>
-<PST>TGA?</PST>
-```
+If the rotator does not move, test Ctrl+F12 directly in DXLog before troubleshooting the bridge.
 
-Expected query replies are:
+---
+
+# 12. Refresh intervals
 
 ```text
-AZ:85
-TGA:85
+KST station list:                 every 10 seconds
+AirScout full AS rescan pause:    20 seconds after a completed pass
+AirScout per-path timeout:        2 seconds
+KST map refresh:                  every 5 seconds
+AirScout /planes.json check:      at most every 5 seconds
+Selected path query:              immediate when selected
+QSO logged refresh:               immediate/short delayed refresh
 ```
 
-A carriage return or line feed after the value is accepted.
+The aircraft feed’s own cycle remains the limiting factor for new aircraft positions.
 
-## Configuring OpenHPSDR Zeus
+---
 
-Create or enable a Hamlib network/`rotctld` rotator in Zeus for each bridge channel.
+# 13. Saved settings
 
-For every Zeus rotator, enter:
-
-- The IP address of the computer running ZeusPstBridge.
-- The unique TCP port assigned to that channel.
-
-When Zeus and the bridge run on the same PC:
+The bridge stores its configuration at:
 
 ```text
-Rotator 1: host 127.0.0.1, port 4533
-Rotator 2: host 127.0.0.1, port 4535
-Rotator 3: host 127.0.0.1, port 4537
+%APPDATA%\DXLog.net\KstChatBridgeTelnet.ini
 ```
 
-When Zeus runs on another PC and ZeusPstBridge runs at `192.168.1.50`:
+This includes:
+
+- ON4KST host, port, room, callsign and password.
+- Name and home locator.
+- AirScout enable state and ports.
+- Macros.
+- Window position and size.
+- Display colours and title-bar colour.
+
+**Security note:** the ON4KST password is stored in this local INI file. Do not share the file, and protect access to the Windows account.
+
+To reset all bridge settings, close DXLog and rename or delete `KstChatBridgeTelnet.ini`.
+
+---
+
+# 14. Troubleshooting
+
+## The bridge does not appear in DXLog
+
+- Confirm the DLL is in `%APPDATA%\DXLog.net\CustomForms`.
+- Confirm the project was built as **x86** and targets **.NET Framework 4.8**.
+- Close and restart DXLog after replacing the DLL.
+
+## KST does not connect
+
+- Check the ON4KST callsign and password.
+- Confirm host `www.on4kst.info` and port `23000`.
+- Check Windows Firewall and internet access.
+- Try a different KST room only after normal login is confirmed.
+
+## QTF and QRB are blank or incorrect
+
+- Enter a valid own Maidenhead locator in bridge Setup.
+- Confirm the remote KST station has a valid locator.
+
+## AirScout remains Off
+
+Enable **AirScout UDP integration** in bridge Setup.
+
+## AirScout remains Listening
+
+- Select a station with a valid locator.
+- Confirm DXLog has a valid active radio frequency.
+- Confirm AirScout Network Server is enabled.
+- Confirm UDP port `9872` matches in both programs.
+
+## AirScout shows Waiting but never OK
+
+- Check AirScout UDP Server Name is `AS`.
+- Check UDP port `9872`.
+- Allow AirScout and DXLog through Windows Firewall.
+- Confirm AirScout itself can calculate the selected path.
+
+## AS cells contain only `-`
+
+Communication is working, but AirScout is not reporting a suitable aircraft for those paths. Confirm live aircraft are visible in AirScout and that the correct band is active in DXLog.
+
+## Aircraft do not appear on the KST map
+
+- Select a station whose AS result has an aircraft.
+- Enable **Show AirScout path and aircraft**.
+- Confirm AirScout HTTP server port is `9880`.
+- Confirm `http://127.0.0.1:9880/planes.json` is available locally.
+- Confirm AirScout has a working live aircraft feed.
+
+## OpenSky gives an SSL/TLS trust error
+
+Use this exact AirScout OpenSky URL:
 
 ```text
-Rotator 1: host 192.168.1.50, port 4533
-Rotator 2: host 192.168.1.50, port 4535
-Rotator 3: host 192.168.1.50, port 4537
+https://opensky-network.org:443/api/states/all
 ```
 
-After Zeus connects, the channel's **Zeus** status changes from **Listening** to **1 client**. More than one program may connect to the same channel, in which case the client count increases.
+The explicit `:443` prevents affected plugin versions from changing it to the failing `api.opensky-network.org` hostname. Check the setting again after restarting AirScout.
 
-ZeusPstBridge presents each channel as an azimuth-only rotator. Elevation is always reported as `0.000000`.
+## Map is blank
 
-## Example installations
+- Check internet access for OpenStreetMap tiles.
+- Click **Refresh** or **Fit**.
+- Check the tile-cache folder is writable.
+- Temporarily remove old cached tiles from `%APPDATA%\DXLog.net\KstMapTiles` if required.
 
-### Everything on one Windows PC
+## Rotator does not turn
 
-Use this when Zeus, ZeusPstBridge and one PstRotatorAz instance all run on the same computer.
+- Confirm the rotator works from DXLog itself.
+- Confirm Ctrl+F12 works with the active entry line.
+- Confirm the selected station has a valid locator.
+- Confirm **Turn rotator on click** is enabled.
+
+---
+
+# 15. Version 1.9 notes
+
+Version 1.9 adds automatic decoding of HTML character entities in KST station names. Values such as `&#9889;`, `&#8482;` and `&amp;` now display as their intended characters instead of raw entity text.
+
+# 16. Version 1.8 notes
+
+Version 1.8 includes:
+
+- Automatic full-room AirScout scanning.
+- Compact sortable AS column.
+- Selected path and aircraft overlay on the KST map.
+- AirScout UDP and HTTP port settings.
+- Five-second aircraft-map refresh.
+- Message-header white-block correction.
+- Home-centred button and mouse-wheel zoom.
+- Map dragging with the next zoom returning to the home station.
+- Ten-second KST station refresh and QSO-triggered refresh.
+- Existing CQ, directed messaging, macros, map and rotator functions.
+
+---
+
+## Files in this source package
 
 ```text
-Bridge row:
-  Zeus listen IP: 127.0.0.1
-  TCP:            4533
-  PST IP / host:  127.0.0.1
-  PST port:       12000
-  Reply:          12001
-
-Zeus rotator:
-  Host:           127.0.0.1
-  Port:           4533
+DXLogKstBridge.cs       complete bridge source code
+DXLogKstBridge.csproj   Visual Studio/.NET Framework project
+README.md               this guide
 ```
-
-### Zeus and the bridge on one PC, remote PstRotatorAz computers
-
-```text
-Bridge PC: 192.168.1.50
-
-Channel 1:
-  Zeus: 127.0.0.1:4533
-  PST:  192.168.1.101:12000, reply 12001
-
-Channel 2:
-  Zeus: 127.0.0.1:4535
-  PST:  192.168.1.102:12000, reply 12001
-
-Channel 3:
-  Zeus: 127.0.0.1:4537
-  PST:  192.168.1.103:12000, reply 12001
-```
-
-Because each PstRotatorAz computer has a different IP address, all three may use UDP 12000/12001.
-
-### Zeus on a different PC from the bridge
-
-Assume:
-
-```text
-Zeus PC:  192.168.1.40
-Bridge PC: 192.168.1.50
-PST PC:    192.168.1.101
-```
-
-Configure the bridge channel as:
-
-```text
-Zeus listen IP: 192.168.1.50
-TCP:            4533
-PST IP / host:  192.168.1.101
-PST port:       12000
-Reply:          12001
-```
-
-Configure Zeus as:
-
-```text
-Host: 192.168.1.50
-Port: 4533
-```
-
-Allow inbound TCP 4533 and inbound UDP 12001 through the firewall on the bridge PC. Also allow the configured UDP command port through the firewall on the PstRotatorAz PC.
-
-## Testing without a physical rotator
-
-The `Tools` folder contains a simple PstRotatorAz UDP simulator and a Hamlib test client.
-
-Do not run the simulator on a UDP port already being used by a real PstRotatorAz instance.
-
-### 1. Start the simulator
-
-Open PowerShell in the project folder and run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Tools\PstRotatorAz-Simulator.ps1 -CommandPort 12000
-```
-
-The simulator starts at 180 degrees and listens for the PstRotatorAz commands used by the bridge.
-
-### 2. Start the bridge
-
-Run the built `ZeusPstBridge.exe` and use the default first row:
-
-```text
-Zeus listen IP: 127.0.0.1
-TCP:            4533
-PST IP / host:  127.0.0.1
-PST port:       12000
-Reply:          12001
-```
-
-Press **Start Bridge**. The first row should become **PST Online** and display approximately `180.0°`.
-
-### 3. Run the Hamlib test client
-
-Open a second PowerShell window in the project folder:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Tools\Test-Rotctld.ps1 -Port 4533
-```
-
-The script:
-
-1. Requests bridge capabilities.
-2. Reads the current position.
-3. Sends a target azimuth of 123 degrees.
-4. Reads the updated position.
-5. Sends Stop.
-
-## Supported commands
-
-ZeusPstBridge implements the core Hamlib commands needed for absolute azimuth control.
-
-| Hamlib/rotctld input | Function | PstRotatorAz operation |
-|---|---|---|
-| `P 85 0` | Set position | `<PST><AZIMUTH>85</AZIMUTH></PST>` |
-| `\set_pos 85 0` | Set position | `<PST><AZIMUTH>85</AZIMUTH></PST>` |
-| `p` | Read position | Returns the most recently received `AZ:` value and elevation 0. |
-| `\get_pos` | Read position | Returns the most recently received `AZ:` value and elevation 0. |
-| `S` | Stop | `<PST><STOP>1</STOP></PST>` |
-| `\stop` | Stop | `<PST><STOP>1</STOP></PST>` |
-| `K` | Park | `<PST><PARK>1</PARK></PST>` |
-| `\park` | Park | `<PST><PARK>1</PARK></PST>` |
-| `_` / `\get_info` | Identification | Returns bridge information. |
-| `dump_state` | Rotator limits | Returns the configured azimuth range and zero elevation range. |
-| `1` / `dump_caps` | Capabilities | Reports position, stop and park support. |
-| `q` | Disconnect | Closes that TCP client connection. |
-
-Both ordinary and Hamlib extended response formats are supported.
-
-Continuous clockwise/anticlockwise Hamlib `move` commands are intentionally reported as not implemented. The documented PstRotatorAz UDP interface used by this project does not provide a safe direct equivalent.
-
-## Configuration and log files
-
-The program stores per-user data in:
-
-```text
-%LOCALAPPDATA%\ZeusPstBridge
-```
-
-Normally this expands to a path similar to:
-
-```text
-C:\Users\YourName\AppData\Local\ZeusPstBridge
-```
-
-Files are:
-
-```text
-%LOCALAPPDATA%\ZeusPstBridge\config.json
-%LOCALAPPDATA%\ZeusPstBridge\Logs\ZeusPstBridge-YYYY-MM-DD.log
-```
-
-Use **Open Config Folder** in the application to open this location.
-
-If `config.json` is missing, the program creates a new default configuration. If the file cannot be parsed, the invalid file is copied to a timestamped `.bad-YYYYMMDD-HHMMSS` backup and a new default file is created.
-
-A `sample-config.json` file is included with the source package.
-
-### Advanced JSON-only settings
-
-Some settings are retained in `config.json` but are not columns in the main grid:
-
-| Property | Function |
-|---|---|
-| `OfflineTimeoutMs` | Time without a valid PST reply before the channel is marked Offline. |
-| `QueryTarget` | Enables periodic `<PST>TGA?</PST>` target queries. |
-| `SendOnAtStart` | Sends `<PST><ON>1</ON></PST>` when the channel starts. |
-| `SendTrackAtStart` | Sends `<PST><TRACK>1</TRACK></PST>` when the channel starts. |
-
-Close ZeusPstBridge before manually editing `config.json`. Keep a backup before making changes.
-
-Example:
-
-```json
-{
-  "Version": 1,
-  "AutoStart": false,
-  "LogProtocolTraffic": true,
-  "Rotators": [
-    {
-      "Id": "11111111-1111-1111-1111-111111111111",
-      "Enabled": true,
-      "Name": "2 m",
-      "ListenAddress": "127.0.0.1",
-      "TcpPort": 4533,
-      "PstHost": "192.168.1.101",
-      "PstCommandPort": 12000,
-      "PstReplyPort": 12001,
-      "PollIntervalMs": 500,
-      "OfflineTimeoutMs": 3000,
-      "MinAzimuth": 0,
-      "MaxAzimuth": 360,
-      "QueryTarget": true,
-      "SendOnAtStart": false,
-      "SendTrackAtStart": false
-    }
-  ]
-}
-```
-
-The application normalises the file back to 10 channel entries after loading and saving it.
-
-## Firewall and network security
-
-### Windows Firewall
-
-Localhost connections using `127.0.0.1` do not normally require a firewall rule.
-
-For remote Zeus connections, allow the configured Zeus TCP ports into the bridge PC. For example, run PowerShell as Administrator:
-
-```powershell
-New-NetFirewallRule `
-  -DisplayName "ZeusPstBridge TCP 4533-4551" `
-  -Direction Inbound `
-  -Protocol TCP `
-  -LocalPort 4533,4535,4537,4539,4541,4543,4545,4547,4549,4551 `
-  -Action Allow `
-  -Profile Private
-```
-
-For PstRotatorAz replies, allow the UDP reply ports required by the enabled channels. Example:
-
-```powershell
-New-NetFirewallRule `
-  -DisplayName "ZeusPstBridge UDP replies" `
-  -Direction Inbound `
-  -Protocol UDP `
-  -LocalPort 12001,12011,12021 `
-  -Action Allow `
-  -Profile Private
-```
-
-On each remote PstRotatorAz computer, allow its UDP command port or allow the PstRotatorAz application itself through the firewall.
-
-Restrict rules to the Private profile and trusted LAN addresses wherever possible.
-
-### Security warning
-
-The Hamlib `rotctld` protocol used here has no authentication or encryption. Anyone able to connect to a channel's TCP port may be able to command that rotator.
-
-- Prefer `127.0.0.1` when Zeus and the bridge share a PC.
-- Keep the service on a trusted private LAN.
-- Do not forward the TCP or UDP ports from an internet router.
-- Do not expose the bridge directly to the public internet.
-- Use firewall scope restrictions or a VPN for any remote-site use.
-
-## Troubleshooting
-
-### The bridge will not start
-
-Read the message box and the log pane. Common causes are:
-
-- No channel has **On** ticked.
-- A TCP or UDP port is already in use.
-- Two channels use the same Zeus listen IP and TCP port.
-- Two channels point to the same PST host and reply port.
-- The Zeus listen field is not an IPv4 address.
-- The PstRotatorAz hostname cannot be resolved to an IPv4 address.
-- A port is outside the valid range 1-65535.
-- Poll interval is outside 200-10,000 ms.
-- Minimum azimuth is not lower than maximum azimuth.
-
-### Zeus status remains `Listening`
-
-This means the channel started correctly but Zeus has not connected.
-
-Check:
-
-- Zeus is configured for a Hamlib network/`rotctld` rotator.
-- Zeus is using the bridge computer's address, not the PstRotatorAz computer's address.
-- Zeus is using the channel's TCP port.
-- If Zeus is remote, the bridge is not listening only on `127.0.0.1`.
-- The bridge PC firewall allows the TCP connection.
-- No other `rotctld` service is using the same port.
-
-### PST status remains `Offline`
-
-This means no valid `AZ:` or `TGA:` reply has been received recently.
-
-Check:
-
-- PstRotatorAz UDP control is enabled.
-- The bridge has the correct PstRotatorAz IP address.
-- The command port is correct.
-- The reply port is normally command port + 1.
-- The bridge PC firewall allows the UDP reply port.
-- The PstRotatorAz PC firewall allows incoming UDP commands.
-- The two computers can ping each other where network policy permits.
-- Another application is not already bound to the reply port.
-- PstRotatorAz actually answers `<PST>AZ?</PST>` with `AZ:xxx`.
-
-Enable **Protocol traffic log**, press **Query Selected**, and inspect the log. A transmitted `AZ?` with no following PST reply usually indicates a port, firewall or PstRotatorAz UDP configuration problem.
-
-### Zeus connects but no position appears
-
-The bridge does not invent an azimuth. Until a valid `AZ:` response has been received, a Hamlib position request returns a timeout error.
-
-Confirm that the channel shows **PST Online** and a value in **Current** before testing position in Zeus.
-
-### A commanded azimuth is rejected
-
-The target must be between the channel's configured **Min AZ** and **Max AZ** values. This check applies both to Zeus commands and the manual Go button.
-
-For a conventional rotator use `0` to `360`. For a rotator/controller that deliberately supports overlap, configure the appropriate accepted range, such as `-180` to `540`, only after verifying the physical system is safe to operate that way.
-
-### Replies are reported as ambiguous
-
-Two channels match the same PstRotatorAz source IP and UDP reply port. Assign a different UDP port pair to one of the PstRotatorAz instances.
-
-### The program was moved but the old settings remain
-
-Settings are not stored beside the executable. They are stored in:
-
-```text
-%LOCALAPPDATA%\ZeusPstBridge\config.json
-```
-
-Use **Open Config Folder** to locate or reset them.
-
-### Finding unsupported Zeus commands
-
-Enable **Protocol traffic log** and reproduce the problem. Unsupported Hamlib commands are written to the application log with the channel name. These logs are useful when extending compatibility with additional Zeus functions.
-
-## Known limitations
-
-- Version 0.1 is an azimuth-only bridge. Elevation is always returned as zero.
-- Continuous Hamlib `move` commands are not translated.
-- UDP provides no delivery acknowledgement. `RPRT 0` means the bridge accepted and transmitted a supported command; actual movement is confirmed only by later `AZ:` feedback.
-- Park behaviour and the parked heading are controlled by PstRotatorAz, not by ZeusPstBridge.
-- The program is not a complete implementation of every Hamlib `rotctld` command.
-- There is no authentication or encryption on the Zeus TCP interface.
-- Configuration is stored per Windows user.
-
-## Safety
-
-Rotators can move large antennas, dishes and mechanical structures without warning. Before enabling computer control:
-
-- Verify physical end stops and controller limits.
-- Set suitable Min AZ and Max AZ limits in the bridge.
-- Keep people clear of the antenna and rotator structure.
-- Confirm that every Zeus channel controls the intended PstRotatorAz instance.
-- Test Stop Selected and STOP ALL before normal operation.
-- Do not rely on software alone as the only emergency stop or travel-limit protection.
-
-## Licence
-
-ZeusPstBridge is supplied under the MIT Licence. See `LICENSE.txt`.
-
-The software is provided without warranty. It is not affiliated with or endorsed by OpenHPSDR, Zeus, Hamlib or PstRotatorAz.
